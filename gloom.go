@@ -1,8 +1,13 @@
 package main
 
+/*
+    todo: tidy up sigs, ie (a string, b string) => (a, b string)
+*/
+
 import (
     "fmt"
     "crypto/sha256"
+    "encoding/hex"
     "io"
 )
 
@@ -13,7 +18,7 @@ type BitSet struct {
 
 type BloomFilter struct {
     c uint // count of items in filter
-    m uint // size of bitset
+    m uint // size of bitset (in bits)
     f []BloomFilterHash
     b BitSet
 }
@@ -27,14 +32,29 @@ func (bf BloomFilter) FilterLen() (sz int) {
     return len(bf.f)
 }
 
-/***************/
+
 func InitBitSet(l int) BitSet {
-    b := BitSet{}
-    b.bits = make([]uint, 0, l)
+    b := BitSet{uint(l), make([]uint, l, l)}
     return b
 }
 
-/***************/
+func (b *BitSet) SetVal (val int) error {
+    x := 1
+    for i := 0; uint(i) < b.sz; i++ {
+        if (int(val) & int(x)) == int(x) {
+            b.bits[i] = 1
+        }
+
+        // shiiiiiift and bail when ints wrap
+        x = x << 1
+        if (x < 0) {
+            return nil
+        }
+    }
+
+    return nil; // todo!
+}
+
 
 /* Adds a value (item) to a BloomFilter
  */
@@ -45,6 +65,7 @@ func (bf *BloomFilter) Add(item string) {
     for i := range(hashes) {
         fmt.Println("adding...", item, hashes[i])
         // todo
+        bf.b.SetVal(97) // todo
     }
 
     // increment the count
@@ -109,7 +130,7 @@ func NewFilterMulti(f string, args ...string) []BloomFilterHash {
  * bloom filter
  */
 func New(c int, m int, fh []BloomFilterHash) BloomFilter {
-    return BloomFilter{uint(c), uint(m), fh, InitBitSet(48)} // 48 bit bitset
+    return BloomFilter{uint(c), uint(m), fh, InitBitSet(m)} // 48 bit bitset
 }
 
 /* Returns the salt
@@ -138,7 +159,7 @@ var M map[string]interface{} = make(map[string]interface{})
 
 func main() {
     // make a new set of filters
-    fh := NewFilterMulti("sha256_digests", "asd", "asd2", "11313", "1313", "207yd", "13213", "1223123", "131313")
+    fh := NewFilterMulti("sha256_digest", "asd", "asd2", "11313", "1313", "207yd", "13213", "1223123", "131313")
 
     M["sha256_digest"] = sha256_digest
 
@@ -151,7 +172,7 @@ func main() {
 
     // make a new bloom filter
     // 0 provisional items, bitsize 8, with however many filter hashes
-    bf := New(0, 8, fh)
+    bf := New(0, 48, fh)
 
     // lets see what this is all about
     fmt.Println(bf)
@@ -168,6 +189,8 @@ func main() {
 
     // and lets print that mofo
     fmt.Println(bf)
+
+    fmt.Println(bf.b)
 
     if (bf.Test(vv)) {
         fmt.Println(v, "is in bf")
