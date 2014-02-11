@@ -7,8 +7,8 @@ package main
 import (
     "fmt"
     "crypto/sha256"
-    "encoding/hex"
     "io"
+    "math"
 )
 
 type BitSet struct {
@@ -28,25 +28,33 @@ type BloomFilterHash struct {
     salt string
 }
 
+/*
+ * Returns the amount of filters in a BloomFilter
+ */
 func (bf BloomFilter) FilterLen() (sz int) {
     return len(bf.f)
 }
 
-
-func InitBitSet(l int) BitSet {
+/*
+ * Initialises a BitSet to a given length
+ * (all bits set to zero)
+ */
+func NewBitSet(l int) BitSet {
     b := BitSet{uint(l), make([]uint, l, l)}
     return b
 }
 
-func (b *BitSet) SetVal (val int) error {
-    x := 1
+/*
+ * Adds a uint64 value into a bitset
+ */
+func (b *BitSet) SetVal (val uint64) error {
+    x := uint64(1)
     for i := 0; uint(i) < b.sz; i++ {
-        if (int(val) & int(x)) == int(x) {
+        if (uint64(val) & x) == x {
             b.bits[i] = 1
         }
-
         // shiiiiiift and bail when ints wrap
-        x = x << 1
+        x = uint64(x << 1)
         if (x < 0) {
             return nil
         }
@@ -55,24 +63,28 @@ func (b *BitSet) SetVal (val int) error {
     return nil; // todo!
 }
 
-
-/* Adds a value (item) to a BloomFilter
+/*
+ * Adds a value (item) to a BloomFilter
  */
 func (bf *BloomFilter) Add(item string) {
 
     // get a hash for each item
     hashes := bf.Digest(item)
+
+    // add each hash into the bf's bitset
     for i := range(hashes) {
-        fmt.Println("adding...", item, hashes[i])
-        // todo
-        bf.b.SetVal(97) // todo
+        // eg, 48 bits = 2 chars per byte. so 48/16 = 12 = 12 chars = 48 bits
+        bf.b.SetVal(hex_uint64(hashes[i][0:((bf.m / 8) * 2)]))
     }
 
     // increment the count
     bf.c += 1
 }
 
-func (bf BloomFilter) Test (item string) bool {
+/*
+ * Tests whether an item is in a bloom filter
+ */
+func (bf BloomFilter) Test(item string) bool {
     // todo
     return true
 }
@@ -83,7 +95,8 @@ func (bf BloomFilter) String() string {
     return fmt.Sprintf("Bloom filter with %d filters, %d items and bitset size of %d", len(bf.f), bf.c, bf.m)
 }
 
-/* Appends a filter to a bloom filter set
+/*
+ * Appends a filter to a bloom filter set
  */
 func (bf *BloomFilter) AddFilter(b *BloomFilterHash) error {
     if (bf.c > 0) {
@@ -94,6 +107,10 @@ func (bf *BloomFilter) AddFilter(b *BloomFilterHash) error {
     return nil
 }
 
+/*
+ * Returns a digested value for all of the filters
+ * in a BloomFilter
+ */
 func (bf BloomFilter) Digest(value string) []string {
     s := make([]string, 0, len(bf.f))
     for i := range(bf.f) {
@@ -130,7 +147,7 @@ func NewFilterMulti(f string, args ...string) []BloomFilterHash {
  * bloom filter
  */
 func New(c int, m int, fh []BloomFilterHash) BloomFilter {
-    return BloomFilter{uint(c), uint(m), fh, InitBitSet(m)} // 48 bit bitset
+    return BloomFilter{uint(c), uint(m), fh, NewBitSet(m)} // 48 bit bitset
 }
 
 /* Returns the salt
@@ -148,6 +165,9 @@ func (b BloomFilterHash) Digest(value string) string {
     return hash
 }
 
+/* Returns the sha256 digest of a string + salt
+ * 32 bytes / 256bit
+ */
 func sha256_digest (value string, salt string) (string, error) {
     h := sha256.New()
     salted := fmt.Sprintf("%s%s", value, salt)
@@ -157,9 +177,48 @@ func sha256_digest (value string, salt string) (string, error) {
 
 var M map[string]interface{} = make(map[string]interface{})
 
+/* Returns a hex string as a uint64
+ * oops. apparently i missed strconv.ParseInt first time round
+ * todo: replace this as it is redundant
+ */
+func hex_uint64 (s string) uint64 {
+    x := uint64(0)
+    sl := len(s)
+    m := make(map[string]int)
+
+    m["0"]  = 0
+    m["1"]  = 1
+    m["2"]  = 2
+    m["3"]  = 3
+    m["4"]  = 4
+    m["5"]  = 5
+    m["6"]  = 6
+    m["7"]  = 7
+    m["8"]  = 8
+    m["9"]  = 9
+    m["a"]  = 10
+    m["A"]  = 10
+    m["b"]  = 11
+    m["B"]  = 11
+    m["c"]  = 12
+    m["C"]  = 12
+    m["d"]  = 13
+    m["D"]  = 13
+    m["e"]  = 14
+    m["E"]  = 14
+    m["f"]  = 15
+    m["F"]  = 15
+
+    for i := 0; i < sl; i++ {
+        x += uint64(m[string(s[i])]) * uint64(math.Pow(16, float64(sl - i - 1)))
+    }
+
+    return x
+}
+
 func main() {
     // make a new set of filters
-    fh := NewFilterMulti("sha256_digest", "asd", "asd2", "11313", "1313", "207yd", "13213", "1223123", "131313")
+    fh := NewFilterMulti("sha256_digest", "asd", "asdasda", "231221")
 
     M["sha256_digest"] = sha256_digest
 
@@ -192,10 +251,8 @@ func main() {
 
     fmt.Println(bf.b)
 
-    if (bf.Test(vv)) {
-        fmt.Println(v, "is in bf")
-    } else {
-        fmt.Println(v, "is not in bf")
-    }
+    bf.Add("foo2")
+
+    fmt.Println(bf.b)
 
 }
