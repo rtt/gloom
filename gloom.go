@@ -11,6 +11,7 @@ import (
     "math"
 )
 
+// this could also be called a bit vector?
 type BitSet struct {
     sz uint
     bits []uint
@@ -68,10 +69,20 @@ func (b *BitSet) SetVal(val uint64) error {
  */
 
 func (b *BitSet) TestVal(val uint64) (bool, error) {
-    for i := uint(0); i < b.sz; i++ {
+    results := make([]bool, 0)
 
+    x := uint64(1)
+    for i := 0; uint(i) < b.sz; i++ {
+        if ((uint64(val) & x) == x) && b.bits[i] == 1 {
+            results = append(results, true)
+        }
+
+        x = uint64(x << 1)
+        if (x < 0) {
+            return false, nil
+        }
     }
-    return true, nil
+    return all(results), nil
 }
 
 /*
@@ -248,7 +259,7 @@ func hex_uint64 (s string) uint64 {
 
 func main() {
     // make a new set of filters
-    fh := NewFilterMulti("sha256_digest", "asd", "asdasda", "231221")
+    fh := NewFilterMulti("sha256_digest", "asd")
 
     M["sha256_digest"] = sha256_digest
 
@@ -272,23 +283,22 @@ func main() {
         fmt.Println("hash", hashes[i])
     }
 
+    fmt.Println("------------------")
     // lets add foo
-    vv := "foo"
-    bf.Add(vv)
+    // vv := "foo"
+    // bf.Add(vv)
 
     // and lets print that mofo
     fmt.Println(bf)
-
-    fmt.Println(bf.b)
 
     bf.Add("foo2")
 
     fmt.Println(bf.b)
 
-    if (bf.Test("sd")) {
-        fmt.Println("sd is (probably :)) in bf")
+    if (bf.Test("0")) {
+        fmt.Println("c is (probably :)) in bf")
     } else {
-        fmt.Println("sd is not in bf")
+        fmt.Println("c is not in bf")
     }
 
 }
