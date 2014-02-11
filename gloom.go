@@ -5,6 +5,8 @@ package main
 */
 
 import (
+    "bytes"
+    "encoding/binary"
     "fmt"
     "crypto/sha256"
     "io"
@@ -35,6 +37,54 @@ type BloomFilterHash struct {
 func (bf BloomFilter) FilterLen() (sz int) {
     return len(bf.f)
 }
+
+/*
+ * Implements a 32-bit murmur hash
+ * This is a straight implementation from: http://en.wikipedia.org/wiki/MurmurHash
+ */
+func Murmur32(key []byte) uint32 {
+    length := len(key)
+    if length == 0 {
+        return 0
+    }
+    c1, c2 := uint32(0xcc9e2d51), uint32(0x1b873593)
+    blocks := length / 4
+    var h, k uint32
+    buf := bytes.NewBuffer(key)
+    for i := 0; i < blocks; i++ {
+        binary.Read(buf, binary.LittleEndian, &k)
+        k *= c1
+        k = (k << 15) | (k >> (32 - 15))
+        k *= c2
+        h ^= k
+        h = (h << 13) | (h >> (32 - 13))
+        h = (h * 5) + 0xe6546b64
+    }
+    k = 0
+    remaining := blocks * 4
+    switch length & 3 {
+        case 3:
+            k ^= uint32(key[remaining + 2]) << 16
+            fallthrough
+        case 2:
+            k ^= uint32(key[remaining + 1]) << 8
+            fallthrough
+        case 1:
+            k ^= uint32(key[remaining])
+            k *= c1
+            k = (k << 15) | (k >> (32 - 15))
+            k *= c2
+            h ^= k
+    }
+    h ^= uint32(length)
+    h ^= h >> 16
+    h *= 0x85ebca6b
+    h ^= h >> 13
+    h *= 0xc2b2ae35
+    h ^= h >> 16
+    return h
+}
+
 
 /*
  * Initialises a BitSet to a given length
@@ -73,13 +123,14 @@ func (b *BitSet) TestVal(val uint64) (bool, error) {
 
     x := uint64(1)
     for i := 0; uint(i) < b.sz; i++ {
+        // if the bit is 1 and the set at the same position is 1, this is a hit
         if ((uint64(val) & x) == x) && b.bits[i] == 1 {
             results = append(results, true)
         }
 
         x = uint64(x << 1)
         if (x < 0) {
-            return false, nil
+            return false, nil // todo. eugh!
         }
     }
     return all(results), nil
@@ -188,6 +239,10 @@ func NewFilterMulti(f string, args ...string) []BloomFilterHash {
  * bloom filter
  */
 func New(c int, m int, fh []BloomFilterHash) BloomFilter {
+    // todo: make this error instead of just silently "correcting"
+    if (m > 32) {
+        m = 32
+    }
     return BloomFilter{uint(c), uint(m), fh, NewBitSet(m)} // 48 bit bitset
 }
 
@@ -258,6 +313,10 @@ func hex_uint64 (s string) uint64 {
 }
 
 func main() {
+    fmt.Println(Murmur32([]byte{66}))
+    fmt.Println(Murmur32([]byte{66}))
+    return
+
     // make a new set of filters
     fh := NewFilterMulti("sha256_digest", "asd")
 
