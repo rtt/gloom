@@ -47,7 +47,7 @@ func NewBitSet(l int) BitSet {
 /*
  * Adds a uint64 value into a bitset
  */
-func (b *BitSet) SetVal (val uint64) error {
+func (b *BitSet) SetVal(val uint64) error {
     x := uint64(1)
     for i := 0; uint(i) < b.sz; i++ {
         if (uint64(val) & x) == x {
@@ -61,6 +61,17 @@ func (b *BitSet) SetVal (val uint64) error {
     }
 
     return nil; // todo!
+}
+
+/*
+ * Tests whether a uint64 lies in the bitset
+ */
+
+func (b *BitSet) TestVal(val uint64) (bool, error) {
+    for i := uint(0); i < b.sz; i++ {
+
+    }
+    return true, nil
 }
 
 /*
@@ -85,8 +96,14 @@ func (bf *BloomFilter) Add(item string) {
  * Tests whether an item is in a bloom filter
  */
 func (bf BloomFilter) Test(item string) bool {
-    // todo
-    return true
+    hashes := bf.Digest(item)
+    results := make([]bool, len(bf.f))
+    for i := range(hashes) {
+        // eg, 48 bits = 2 chars per byte. so 48/16 = 12 = 12 chars = 48 bits
+        r, _ := bf.b.TestVal(hex_uint64(hashes[i][0:((bf.m / 8) * 2)]))
+        results[i] = r
+    }
+    return all(results)
 }
 
 /* Nicely tells us about a BloomFilter
@@ -117,6 +134,19 @@ func (bf BloomFilter) Digest(value string) []string {
         s = append(s, bf.f[i].Digest(value))
     }
     return s
+}
+
+/*
+ * returns true if all items in the supplied []bool are true, otherwise false
+ */
+func all(b []bool) bool {
+    l, c, i := len(b), 0, 0
+    for ; i < l; i++ {
+        if b[i] {
+            c++ // lol
+        }
+    }
+    return l == c
 }
 
 /*
@@ -254,5 +284,11 @@ func main() {
     bf.Add("foo2")
 
     fmt.Println(bf.b)
+
+    if (bf.Test("sd")) {
+        fmt.Println("sd is (probably :)) in bf")
+    } else {
+        fmt.Println("sd is not in bf")
+    }
 
 }
