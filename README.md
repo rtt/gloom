@@ -20,18 +20,18 @@ import (
 
 func main() {
   // init a new filter with 0 initial items, a 32bit bitset, and 3 hash functions
-  filter := gloom.New(0, 32, 3)
-  
+  filter, _ := gloom.New(0, 32, 3)
+
   // add a value to the filter
   filter.Add("test value")
-  
+
   // test a value
   if filter.Test("some value") {
     fmt.Println("hit! (probably :))")
   } else {
     fmt.Println("miss!")
   }
-  
+
 }
 
 ````
