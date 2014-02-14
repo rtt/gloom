@@ -8,9 +8,7 @@ import (
     "bytes"
     "encoding/binary"
     "fmt"
-    "crypto/sha256"
-    "io"
-    "math"
+    "strconv"
 )
 
 // this could also be called a bit vector?
@@ -22,20 +20,8 @@ type BitSet struct {
 type BloomFilter struct {
     c uint // count of items in filter
     m uint // size of bitset (in bits)
-    f []BloomFilterHash
+    k uint // amt of hashes
     b BitSet
-}
-
-type BloomFilterHash struct {
-    algo string
-    salt string
-}
-
-/*
- * Returns the amount of filters in a BloomFilter
- */
-func (bf BloomFilter) FilterLen() (sz int) {
-    return len(bf.f)
 }
 
 /*
@@ -98,19 +84,15 @@ func NewBitSet(l int) BitSet {
 /*
  * Adds a uint64 value into a bitset
  */
-func (b *BitSet) SetVal(val uint64) error {
-    x := uint64(1)
-    for i := 0; uint(i) < b.sz; i++ {
-        if (uint64(val) & x) == x {
+func (b *BitSet) SetVal(val uint32) error {
+    x, i := uint32(1), uint(0)
+    for ; i < b.sz; i++ {
+        if (val & x) == x {
             b.bits[i] = 1
         }
         // shiiiiiift and bail when ints wrap
-        x = uint64(x << 1)
-        if (x < 0) {
-            return nil
-        }
+        x = x << 1
     }
-
     return nil; // todo!
 }
 
@@ -118,20 +100,17 @@ func (b *BitSet) SetVal(val uint64) error {
  * Tests whether a uint64 lies in the bitset
  */
 
-func (b *BitSet) TestVal(val uint64) (bool, error) {
+func (b *BitSet) TestVal(val uint32) (bool, error) {
     results := make([]bool, 0)
 
-    x := uint64(1)
-    for i := 0; uint(i) < b.sz; i++ {
+    x, i := uint32(1), uint(0)
+    for ; i < b.sz; i++ {
         // if the bit is 1 and the set at the same position is 1, this is a hit
-        if ((uint64(val) & x) == x) && b.bits[i] == 1 {
-            results = append(results, true)
+        if (val & x) == x {
+            results = append(results, b.bits[i] == 1)
         }
 
-        x = uint64(x << 1)
-        if (x < 0) {
-            return false, nil // todo. eugh!
-        }
+        x = x << 1
     }
     return all(results), nil
 }
@@ -146,8 +125,7 @@ func (bf *BloomFilter) Add(item string) {
 
     // add each hash into the bf's bitset
     for i := range(hashes) {
-        // eg, 48 bits = 2 chars per byte. so 48/16 = 12 = 12 chars = 48 bits
-        bf.b.SetVal(hex_uint64(hashes[i][0:((bf.m / 8) * 2)]))
+        bf.b.SetVal(hashes[i])
     }
 
     // increment the count
@@ -159,10 +137,9 @@ func (bf *BloomFilter) Add(item string) {
  */
 func (bf BloomFilter) Test(item string) bool {
     hashes := bf.Digest(item)
-    results := make([]bool, len(bf.f))
+    results := make([]bool, bf.k)
     for i := range(hashes) {
-        // eg, 48 bits = 2 chars per byte. so 48/16 = 12 = 12 chars = 48 bits
-        r, _ := bf.b.TestVal(hex_uint64(hashes[i][0:((bf.m / 8) * 2)]))
+        r, _ := bf.b.TestVal(hashes[i])
         results[i] = r
     }
     return all(results)
@@ -171,29 +148,19 @@ func (bf BloomFilter) Test(item string) bool {
 /* Nicely tells us about a BloomFilter
  */
 func (bf BloomFilter) String() string {
-    return fmt.Sprintf("Bloom filter with %d filters, %d items and bitset size of %d", len(bf.f), bf.c, bf.m)
-}
-
-/*
- * Appends a filter to a bloom filter set
- */
-func (bf *BloomFilter) AddFilter(b *BloomFilterHash) error {
-    if (bf.c > 0) {
-        return fmt.Errorf("Cannot append to filters while BloomFilter size is not zero")
-    }
-
-    bf.f = append(bf.f, *b)
-    return nil
+    return fmt.Sprintf("Bloom filter with %d filters, %d items and bitset size of %d", bf.k, bf.c, bf.m)
 }
 
 /*
  * Returns a digested value for all of the filters
  * in a BloomFilter
  */
-func (bf BloomFilter) Digest(value string) []string {
-    s := make([]string, 0, len(bf.f))
-    for i := range(bf.f) {
-        s = append(s, bf.f[i].Digest(value))
+func (bf BloomFilter) Digest(value string) []uint32 {
+    s, i := make([]uint32, 0, bf.k), 0
+    for ; i < int(bf.k); i++ {
+        vl := len(value)
+        h := (Murmur32([]byte(value[0:vl / 2])) + uint32(i) + Murmur32([]byte(value[vl / 2:])))
+        s = append(s, h)
     }
     return s
 }
@@ -211,153 +178,41 @@ func all(b []bool) bool {
     return l == c
 }
 
-/*
- * Returns a new BloomFilterHash
- */
-func NewFilter(f string, salt string) (BloomFilterHash, error) {
-    if (len(salt) == 0) {
-        return BloomFilterHash{}, fmt.Errorf("Salt must not be zero length")
-    }
-    return BloomFilterHash{f, salt}, nil
-}
-
-/*
- * Returns a set of BloomFilterHashes
- * according to a set of string arguments given
- * todo: make sure to unique these values
- */
-func NewFilterMulti(f string, args ...string) []BloomFilterHash {
-    sl := []BloomFilterHash{}
-    for i := range(args) {
-        f, _ := NewFilter(f, args[i])
-        sl = append(sl, f)
-    }
-    return sl
-}
-
 /* Convenience function for constructing a new
  * bloom filter
  */
-func New(c int, m int, fh []BloomFilterHash) BloomFilter {
-    // todo: make this error instead of just silently "correcting"
-    if (m > 32) {
-        m = 32
+func New(c int, m int, k int) BloomFilter {
+    if m > 32 {
+        m =  32
     }
-    return BloomFilter{uint(c), uint(m), fh, NewBitSet(m)} // 48 bit bitset
+    return BloomFilter{uint(c), uint(m), uint(k), NewBitSet(m)}
 }
 
-/* Returns the salt
- */
-func (b BloomFilterHash) Salt() string  {
-    return b.salt
-}
-
-/* Returns a Digested value according to
- * the filter's hash and salt
- */
-func (b BloomFilterHash) Digest(value string) string {
-    // todo: check this is
-    hash, _ := M[b.algo].(func(string, string) (string, error))(value, b.salt)
-    return hash
-}
-
-/* Returns the sha256 digest of a string + salt
- * 32 bytes / 256bit
- */
-func sha256_digest (value string, salt string) (string, error) {
-    h := sha256.New()
-    salted := fmt.Sprintf("%s%s", value, salt)
-    io.WriteString(h, salted)
-    return fmt.Sprintf("%x", h.Sum(nil)), nil
-}
-
-var M map[string]interface{} = make(map[string]interface{})
+//var M map[string]interface{} = make(map[string]interface{})
 
 /* Returns a hex string as a uint64
  * oops. apparently i missed strconv.ParseInt first time round
  * todo: replace this as it is redundant
  */
 func hex_uint64 (s string) uint64 {
-    x := uint64(0)
-    sl := len(s)
-    m := make(map[string]int)
-
-    m["0"]  = 0
-    m["1"]  = 1
-    m["2"]  = 2
-    m["3"]  = 3
-    m["4"]  = 4
-    m["5"]  = 5
-    m["6"]  = 6
-    m["7"]  = 7
-    m["8"]  = 8
-    m["9"]  = 9
-    m["a"]  = 10
-    m["A"]  = 10
-    m["b"]  = 11
-    m["B"]  = 11
-    m["c"]  = 12
-    m["C"]  = 12
-    m["d"]  = 13
-    m["D"]  = 13
-    m["e"]  = 14
-    m["E"]  = 14
-    m["f"]  = 15
-    m["F"]  = 15
-
-    for i := 0; i < sl; i++ {
-        x += uint64(m[string(s[i])]) * uint64(math.Pow(16, float64(sl - i - 1)))
-    }
-
-    return x
+    i, _ := strconv.ParseInt(s, 16, 64)
+    return uint64(i)
 }
 
 func main() {
-    fmt.Println(Murmur32([]byte{66}))
-    fmt.Println(Murmur32([]byte{66}))
-    return
 
-    // make a new set of filters
-    fh := NewFilterMulti("sha256_digest", "asd")
+    bf := New(0, 32, 3)
 
-    M["sha256_digest"] = sha256_digest
-
-    v := "password"
-
-    // spit a load of hashes
-    for i := range(fh) {
-        fmt.Println(v, ":", fh[i].Digest(v), "| salt:", fh[i].Salt())
-    }
-
-    // make a new bloom filter
-    // 0 provisional items, bitsize 8, with however many filter hashes
-    bf := New(0, 48, fh)
-
-    // lets see what this is all about
     fmt.Println(bf)
 
-    // ask a bloom filter to digest a value against all of its filters
-    hashes := bf.Digest(v)
-    for i := range(hashes) {
-        fmt.Println("hash", hashes[i])
-    }
-
-    fmt.Println("------------------")
-    // lets add foo
-    // vv := "foo"
-    // bf.Add(vv)
-
-    // and lets print that mofo
-    fmt.Println(bf)
-
-    bf.Add("foo2")
-
+    bf.Add("test")
     fmt.Println(bf.b)
+    t := "1231"
 
-    if (bf.Test("0")) {
-        fmt.Println("c is (probably :)) in bf")
+    if (bf.Test(t)) {
+        fmt.Println(fmt.Sprintf("%s is (probably :)) in bf", t))
     } else {
-        fmt.Println("c is not in bf")
+        fmt.Println(fmt.Sprintf("%s is not in bf", t))
     }
 
 }
