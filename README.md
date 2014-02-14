@@ -1,7 +1,7 @@
 Gloom - A Go (GoLang) Bloom Filter
 -----
 
-A bloom filter implemented in Go. It uses [Murmur32](http://en.wikipedia.org/wiki/MurmurHash) hashing, and also supports removing of values from the set via bit counting
+A bloom filter implemented in Go. There are others, but I just fancied building one for the sake of it. It uses [MurmurHash](http://en.wikipedia.org/wiki/MurmurHash) 32 bit hashing, and also supports removing of values from the set via bit counting. 
 
 Author info: [@rtt](http://twitter.com/rtt) / [rsty.org](http://rsty.org)
 
