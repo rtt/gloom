@@ -1,5 +1,11 @@
 package main
 
+/*
+ * Author Rich Taylor, 2014
+ * twitter.com/rtt  -- http://rsty.org
+ * License: Public domain
+ */
+
 import (
     "bytes"
     "encoding/binary"
