@@ -91,10 +91,24 @@ func (b *BitSet) SetVal(val uint32) error {
 	for ; i < b.sz; i++ {
 		if (val & x) == x {
 			b.bits[i] = 1
+			b.counts[i]++
 		}
 		x = x << 1
 	}
 	return nil // todo!
+}
+
+func (b *BitSet) RemoveVal(val uint32) {
+	i := uint(0)
+	for ; i < b.sz; i++ {
+		if b.bits[i] == 1 && b.counts[i] > 0 {
+			// bit is set
+			b.counts[i]--
+			if b.counts[i] == 0 {
+				b.bits[i] = 0
+			}
+		}
+	}
 }
 
 /*
@@ -144,6 +158,13 @@ func (bf BloomFilter) Test(item string) bool {
 		results[i] = r
 	}
 	return all(results)
+}
+
+func (bf BloomFilter) Remove(item string) {
+	hashes := bf.Digest(item)
+	for i := range hashes {
+		bf.b.RemoveVal(hashes[i])
+	}
 }
 
 /* Nicely tells us about a BloomFilter
