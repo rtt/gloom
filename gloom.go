@@ -1,4 +1,4 @@
-package main
+package gloom
 
 /*
  * Author Rich Taylor, 2014
@@ -192,31 +192,4 @@ func New(c int, m int, k int) (BloomFilter, error) {
         return BloomFilter{}, fmt.Errorf("Bits must not be greater than 32")
     }
     return BloomFilter{uint(c), uint(m), uint(k), NewBitSet(m)}, nil
-}
-
-
-func main() {
-
-    bf, _ := New(0, 32, 3)
-
-    fmt.Println(bf)
-
-    v, t, t2 := "some value", "some test value", "some value"
-
-    fmt.Println("adding", v)
-    bf.Add(v)
-
-    fmt.Println(bf.b)
-
-    if (bf.Test(t)) {
-        fmt.Println(fmt.Sprintf("%s is (probably :)) in bf", t))
-    } else {
-        fmt.Println(fmt.Sprintf("%s is not in bf", t))
-    }
-
-    if (bf.Test(t2)) {
-        fmt.Println(fmt.Sprintf("%s is (probably :)) in bf", t2))
-    } else {
-        fmt.Println(fmt.Sprintf("%s is not in bf", t2))
-    }
 }
