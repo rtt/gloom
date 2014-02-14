@@ -1,14 +1,9 @@
 package main
 
-/*
-    todo: tidy up sigs, ie (a string, b string) => (a, b string)
-*/
-
 import (
     "bytes"
     "encoding/binary"
     "fmt"
-    "strconv"
 )
 
 // this could also be called a bit vector?
@@ -26,7 +21,8 @@ type BloomFilter struct {
 
 /*
  * Implements a 32-bit murmur hash
- * This is a straight implementation from: http://en.wikipedia.org/wiki/MurmurHash
+ * This is a straight implementation from:
+ *    http://en.wikipedia.org/wiki/MurmurHash
  */
 func Murmur32(key []byte) uint32 {
     length := len(key)
@@ -90,7 +86,6 @@ func (b *BitSet) SetVal(val uint32) error {
         if (val & x) == x {
             b.bits[i] = 1
         }
-        // shiiiiiift and bail when ints wrap
         x = x << 1
     }
     return nil; // todo!
@@ -105,13 +100,13 @@ func (b *BitSet) TestVal(val uint32) (bool, error) {
 
     x, i := uint32(1), uint(0)
     for ; i < b.sz; i++ {
-        // if the bit is 1 and the set at the same position is 1, this is a hit
+        // if this bit is meant to be on, record whether it was or not
         if (val & x) == x {
             results = append(results, b.bits[i] == 1)
         }
-
         x = x << 1
     }
+
     return all(results), nil
 }
 
@@ -148,7 +143,9 @@ func (bf BloomFilter) Test(item string) bool {
 /* Nicely tells us about a BloomFilter
  */
 func (bf BloomFilter) String() string {
-    return fmt.Sprintf("Bloom filter with %d filters, %d items and bitset size of %d", bf.k, bf.c, bf.m)
+    return fmt.Sprintf(
+        "BloomFilter with %d filters, %d items and bitset size of %d",
+        bf.k, bf.c, bf.m)
 }
 
 /*
@@ -156,10 +153,13 @@ func (bf BloomFilter) String() string {
  * in a BloomFilter
  */
 func (bf BloomFilter) Digest(value string) []uint32 {
-    s, i := make([]uint32, 0, bf.k), 0
-    for ; i < int(bf.k); i++ {
+    s, i := make([]uint32, 0, bf.k), uint32(0)
+    for ; uint(i) < bf.k; i++ {
         vl := len(value)
-        h := (Murmur32([]byte(value[0:vl / 2])) + uint32(i) + Murmur32([]byte(value[vl / 2:])))
+        h := Murmur32(
+            []byte(value[0:vl / 2])) +
+            (i * Murmur32([]byte(value[vl / 2:]))) % (1 << bf.m - 1)
+
         s = append(s, h)
     }
     return s
@@ -181,33 +181,26 @@ func all(b []bool) bool {
 /* Convenience function for constructing a new
  * bloom filter
  */
-func New(c int, m int, k int) BloomFilter {
+func New(c int, m int, k int) (BloomFilter, error) {
     if m > 32 {
-        m =  32
+        return BloomFilter{}, fmt.Errorf("Bits must not be greater than 32")
     }
-    return BloomFilter{uint(c), uint(m), uint(k), NewBitSet(m)}
+    return BloomFilter{uint(c), uint(m), uint(k), NewBitSet(m)}, nil
 }
 
-//var M map[string]interface{} = make(map[string]interface{})
-
-/* Returns a hex string as a uint64
- * oops. apparently i missed strconv.ParseInt first time round
- * todo: replace this as it is redundant
- */
-func hex_uint64 (s string) uint64 {
-    i, _ := strconv.ParseInt(s, 16, 64)
-    return uint64(i)
-}
 
 func main() {
 
-    bf := New(0, 32, 3)
+    bf, _ := New(0, 32, 3)
 
     fmt.Println(bf)
 
-    bf.Add("test")
+    v, t, t2 := "some value", "some test value", "some value"
+
+    fmt.Println("adding", v)
+    bf.Add(v)
+
     fmt.Println(bf.b)
-    t := "1231"
 
     if (bf.Test(t)) {
         fmt.Println(fmt.Sprintf("%s is (probably :)) in bf", t))
@@ -215,4 +208,9 @@ func main() {
         fmt.Println(fmt.Sprintf("%s is not in bf", t))
     }
 
+    if (bf.Test(t2)) {
+        fmt.Println(fmt.Sprintf("%s is (probably :)) in bf", t2))
+    } else {
+        fmt.Println(fmt.Sprintf("%s is not in bf", t2))
+    }
 }
